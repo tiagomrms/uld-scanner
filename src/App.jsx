@@ -10,49 +10,49 @@ export default function App() {
   const [tapeteAtual, setTapeteAtual] = useState(null);
   const [uldsLidos, setUldsLidos] = useState([]);
   const [modoSelecao, setModoSelecao] = useState('botoes');
-  const [cameraAtiva, setCameraAtiva] = useState(true);
   const ultimoLido = useRef(''); 
 
+  // A câmara só precisa de estar ativa se estivermos no modo de escanear o TBC ou se já houver um TBC selecionado
+  const precisaCamera = tapeteAtual !== null || modoSelecao === 'escanear';
+
   useEffect(() => {
-    if (!cameraAtiva) return;
+    if (!precisaCamera) return;
 
     const html5QrCode = new Html5Qrcode("reader");
     const config = { fps: 10, qrbox: { width: 250, height: 100 } };
 
-    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-      .catch((err) => console.error("Erro a iniciar câmara:", err));
-
-    function onScanSuccess(decodedText) {
+    html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+      // Evita leituras duplas no espaço de 2 segundos
       if (decodedText === ultimoLido.current) return;
       ultimoLido.current = decodedText;
       setTimeout(() => { ultimoLido.current = ''; }, 2000); 
 
+      // 1. Se ainda não há tapete, valida se o código lido é um TBC/TRF
       if (!tapeteAtual) {
         const textoMaiusculo = decodedText.toUpperCase();
         if (textoMaiusculo.includes("TBC") || textoMaiusculo.includes("TRF") || textoMaiusculo.includes("TAPETE")) {
           setTapeteAtual(decodedText);
+          setModoSelecao('botoes'); // Volta ao default para a próxima vez
         } else {
-          alert(`Etiqueta detetada: ${decodedText}. Aponte ao código de um TBC ou TRF válido!`);
+          alert(`Etiqueta: ${decodedText}. Aponte a um TBC ou TRF válido!`);
         }
         return;
       }
 
-      if (uldsLidos.some(item => item.uld === decodedText)) return;
+      // 2. Se já há tapete, regista o ULD (sem reiniciar a câmara)
+      setUldsLidos(prev => {
+        if (prev.some(item => item.uld === decodedText)) return prev;
+        return [{ uld: decodedText, tapete: tapeteAtual, timestamp: new Date().toISOString() }, ...prev];
+      });
 
-      const novoUld = {
-        uld: decodedText,
-        tapete: tapeteAtual,
-        timestamp: new Date().toISOString()
-      };
-      setUldsLidos(prev => [novoUld, ...prev]);
-    }
+    }).catch((err) => console.error("Erro a iniciar câmara:", err));
 
     return () => {
       if (html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => html5QrCode.clear());
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
       }
     };
-  }, [cameraAtiva, tapeteAtual, uldsLidos]); 
+  }, [precisaCamera, tapeteAtual]); // Otimização crítica: a câmara já não reinicia ao ler ULDs
 
   return (
     <div className="p-4 flex flex-col h-screen bg-gray-100">
@@ -70,7 +70,7 @@ export default function App() {
               onClick={() => setModoSelecao('botoes')} 
               className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${modoSelecao === 'botoes' ? 'bg-white text-blue-700 shadow' : 'text-gray-600'}`}
             >
-              Escolher por Botão (TBCs + TRF)
+              Escolher (TBCs + TRF)
             </button>
             <button 
               onClick={() => setModoSelecao('escanear')} 
@@ -101,13 +101,15 @@ export default function App() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center">
               <p className="text-gray-600 text-sm mb-2 text-center">Aponte a câmara ao código do TBC ou TRF</p>
-              <div id="reader" className="w-full max-w-sm rounded-lg overflow-hidden shadow-lg border-4 border-blue-600 bg-black min-h-[250px]"></div>
+              {precisaCamera && (
+                <div id="reader" className="w-full max-w-sm rounded-lg overflow-hidden shadow-lg border-4 border-blue-600 bg-black min-h-[250px]"></div>
+              )}
             </div>
           )}
         </div>
       ) : (
         <>
-          {cameraAtiva && (
+          {precisaCamera && (
             <div className="flex justify-center mb-4">
               <div id="reader" className="w-full max-w-sm rounded-lg overflow-hidden shadow-lg border-4 border-green-600 bg-black min-h-[250px]"></div>
             </div>
@@ -133,7 +135,7 @@ export default function App() {
           </div>
 
           <button 
-            onClick={() => { setTapeteAtual(null); setUldsLidos([]); }}
+            onClick={() => { setTapeteAtual(null); setUldsLidos([]); setModoSelecao('botoes'); }}
             className="mt-4 p-4 bg-red-500 text-white font-bold rounded-lg w-full shadow-lg active:bg-red-700 transition-colors"
           >
             Terminar / Mudar Local
