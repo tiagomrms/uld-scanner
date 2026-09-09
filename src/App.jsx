@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 
 function App() {
   const [uld, setUld] = useState('')
@@ -14,32 +14,46 @@ function App() {
     "TBC 8", "TBC 9", "TBC 10", "TBC 11", "TBC 12", "TBC 13", "TRF"
   ]
 
+  // Lógica Robusta da Câmara
   useEffect(() => {
+    let scanner;
+
     if (cameraAtiva) {
-      // Configuração para códigos de barras (retângulo)
-      const scanner = new Html5QrcodeScanner(
-        "leitor-camera",
-        { fps: 10, qrbox: { width: 300, height: 100 } },
-        false
-      )
-
-      scanner.render(
-        (textoLido) => {
-          setUld(textoLido.toUpperCase()) // Preenche a matrícula
-          setCameraAtiva(false)           // Desliga a câmara
-          scanner.clear()                 // Limpa o processo
-        },
-        (erro) => {
-          // O leitor dispara erros silenciosos enquanto tenta focar; ignoramos.
-        }
-      )
-
-      return () => {
-        scanner.clear().catch(e => console.log("Leitor encerrado."))
-      }
+      // O timeout garante que o HTML teve tempo de desenhar a caixa antes de ligar a câmara
+      setTimeout(() => {
+        scanner = new Html5Qrcode("leitor-camera");
+        
+        scanner.start(
+          { facingMode: "environment" }, // Força a usar a câmara de trás do telemóvel
+          { fps: 10, qrbox: { width: 250, height: 100 } }, // Formato retangular para códigos de barras
+          (textoLido) => {
+            // Sucesso na leitura!
+            setUld(textoLido.toUpperCase());
+            setCameraAtiva(false); // Fecha a câmara
+            if (scanner) {
+              scanner.stop().then(() => scanner.clear()).catch(console.error);
+            }
+          },
+          (erro) => {
+            // Ignorar erros silenciosos enquanto tenta focar no código
+          }
+        ).catch((err) => {
+          console.error("Erro ao iniciar a câmara:", err);
+          alert("Erro na câmara. Garante que aceitaste as permissões e estás a usar o link da Azure (HTTPS).");
+          setCameraAtiva(false);
+        });
+      }, 100);
     }
-  }, [cameraAtiva])
 
+    // Limpeza se o utilizador fechar a câmara
+    return () => {
+      if (scanner && scanner.isScanning) {
+        scanner.stop().then(() => scanner.clear()).catch(console.error);
+      }
+    };
+  }, [cameraAtiva]);
+
+  // Lógica de Gravação
   const registarDescarga = async (e) => {
     if (e) e.preventDefault()
 
@@ -56,13 +70,16 @@ function App() {
         .from('descargas_uld')
         .insert([{ uld: uld.toUpperCase(), tapete: tapete }])
 
+      // Se o Supabase rejeitar a gravação, atira o erro!
       if (error) throw error
 
       setMensagem({ texto: `✅ ${uld.toUpperCase()} registado no ${tapete}!`, tipo: 'sucesso' })
-      setUld('') // Limpa a matrícula para o próximo
+      setUld('') // Limpa a matrícula
+      
     } catch (error) {
       console.error('Erro na gravação:', error)
-      setMensagem({ texto: '❌ Erro ao comunicar com a base de dados.', tipo: 'erro' })
+      // Agora o ecrã vai dizer-te EXATAMENTE porque é que falhou (ex: erro de chaves, RLS, etc)
+      setMensagem({ texto: `❌ Falhou: ${error.message || 'Erro desconhecido'}`, tipo: 'erro' })
     } finally {
       setLoading(false)
     }
@@ -98,7 +115,7 @@ function App() {
             </select>
           </div>
 
-          {/* CÂMARA & ULD */}
+          {/* CÂMARA E MATRÍCULA */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">
               Matrícula ULD
@@ -119,18 +136,19 @@ function App() {
                   onClick={() => setCameraAtiva(true)}
                   className="w-full py-3 bg-gray-800 text-white rounded-lg font-bold text-lg hover:bg-gray-700 transition-all flex justify-center items-center gap-2"
                 >
-                  📸 Abrir Câmara para Ler
+                  📸 Abrir Câmara (Código de Barras)
                 </button>
               </div>
             ) : (
-              <div className="bg-black p-2 rounded-lg relative">
+              <div className="bg-black p-2 rounded-lg relative min-h-[250px]">
                 <button 
                   type="button" 
                   onClick={() => setCameraAtiva(false)}
-                  className="absolute top-2 right-2 bg-red-600 text-white px-3 py-1 rounded-md z-50 text-sm font-bold"
+                  className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-md z-50 text-sm font-bold shadow-lg"
                 >
                   Cancelar
                 </button>
+                {/* Esta div vazia é onde o código injeta a imagem da câmara */}
                 <div id="leitor-camera" className="w-full overflow-hidden rounded-md"></div>
               </div>
             )}
