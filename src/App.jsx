@@ -3,30 +3,28 @@ import { supabase } from './supabase'
 import { Html5Qrcode } from 'html5-qrcode'
 
 function App() {
-  const isAdministrador = new URLSearchParams(window.location.search).get('admin') === '1'
-  
   // ==========================================
-  // ESTADOS DE AUTENTICAÇÃO E UTILIZADOR
+  // ESTADOS DE AUTENTICAÇÃO E NAVEGAÇÃO
   // ==========================================
   const [session, setSession] = useState(null)
+  const [ecraAtual, setEcraAtual] = useState('menu') // 'menu', 'leitura' ou 'pesquisa'
+  
   const [emailLogin, setEmailLogin] = useState('')
   const [passwordLogin, setPasswordLogin] = useState('')
   const [isRegisto, setIsRegisto] = useState(false)
   const [loadingAuth, setLoadingAuth] = useState(false)
   const [msgAuth, setMsgAuth] = useState('')
 
-  // Verifica se o utilizador já tem sessão iniciada ao abrir a app
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-    })
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
+      // Se fizer logout, garante que volta ao menu para a próxima sessão
+      if (!session) setEcraAtual('menu') 
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  // Função de Login / Registo
   const handleAuth = async (e) => {
     e.preventDefault()
     setLoadingAuth(true)
@@ -64,8 +62,7 @@ function App() {
 
   useEffect(() => {
     let scanner;
-    // Só ativa a câmara se houver sessão e não for o admin
-    if (cameraAtiva && !isAdministrador && session) {
+    if (cameraAtiva && ecraAtual === 'leitura' && session) {
       setTimeout(() => {
         scanner = new Html5Qrcode("leitor-camera");
         scanner.start(
@@ -87,7 +84,7 @@ function App() {
     return () => {
       if (scanner && scanner.isScanning) scanner.stop().then(() => scanner.clear()).catch(console.error);
     };
-  }, [cameraAtiva, isAdministrador, session]);
+  }, [cameraAtiva, ecraAtual, session]);
 
   const registarDescarga = async (e) => {
     if (e) e.preventDefault()
@@ -101,11 +98,7 @@ function App() {
     try {
       const { error } = await supabase
         .from('descargas_uld')
-        .insert([{ 
-          uld: uld.toUpperCase(), 
-          tapete: tapete,
-          operador: session.user.email // Guarda o email automaticamente!
-        }])
+        .insert([{ uld: uld.toUpperCase(), tapete: tapete, operador: session.user.email }])
 
       if (error) throw error
       setMensagem({ texto: `✅ ${uld.toUpperCase()} registado!`, tipo: 'sucesso' })
@@ -118,7 +111,7 @@ function App() {
   }
 
   // ==========================================
-  // ESTADOS DA PESQUISA (ADMIN)
+  // ESTADOS DA PESQUISA
   // ==========================================
   const [termoPesquisa, setTermoPesquisa] = useState('')
   const [resultados, setResultados] = useState([])
@@ -144,7 +137,7 @@ function App() {
   }
 
   // ==========================================
-  // ECRÃ DE LOGIN (Se não houver sessão)
+  // ECRÃ 1: LOGIN
   // ==========================================
   if (!session) {
     return (
@@ -157,25 +150,11 @@ function App() {
           <form onSubmit={handleAuth} className="space-y-4">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">Email Corporativo</label>
-              <input 
-                type="email" 
-                required
-                value={emailLogin}
-                onChange={(e) => setEmailLogin(e.target.value)}
-                placeholder="ex: 30066307@myjohnmenzies.aero" 
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg outline-none focus:border-blue-500"
-              />
+              <input type="email" required value={emailLogin} onChange={(e) => setEmailLogin(e.target.value)} placeholder="ex: 30066307@myjohnmenzies.aero" className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg outline-none focus:border-blue-500" />
             </div>
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">Password</label>
-              <input 
-                type="password" 
-                required
-                value={passwordLogin}
-                onChange={(e) => setPasswordLogin(e.target.value)}
-                placeholder="••••••••" 
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg outline-none focus:border-blue-500"
-              />
+              <input type="password" required value={passwordLogin} onChange={(e) => setPasswordLogin(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg outline-none focus:border-blue-500" />
             </div>
             <button type="submit" disabled={loadingAuth} className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors">
               {loadingAuth ? 'A aguardar...' : (isRegisto ? 'Criar Conta' : 'Iniciar Sessão')}
@@ -193,105 +172,119 @@ function App() {
   }
 
   // ==========================================
-  // ECRÃ DO ADMIN
+  // ECRÃ 2: MENU PRINCIPAL
   // ==========================================
-  if (isAdministrador) {
+  if (ecraAtual === 'menu') {
     return (
-      <div className="min-h-screen bg-gray-50 p-8 font-sans">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <div>
-              <h1 className="text-3xl font-extrabold text-blue-900">Dashboard de Controlo</h1>
-              <p className="text-gray-500 font-medium">Sessão: {session.user.email}</p>
-            </div>
-            <button onClick={() => supabase.auth.signOut()} className="bg-red-100 text-red-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-200">
-              Terminar Sessão
+      <div className="min-h-screen bg-slate-100 p-4 font-sans flex flex-col items-center pt-8">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6">
+          <div className="text-center mb-8 border-b border-gray-100 pb-6">
+            <h1 className="text-3xl font-extrabold text-blue-900 tracking-tight">Menzies <span className="text-blue-500">App</span></h1>
+            <p className="text-sm text-gray-500 font-medium mt-2">Bem-vindo, {session.user.email}</p>
+          </div>
+
+          <div className="space-y-4">
+            <button onClick={() => setEcraAtual('leitura')} className="w-full bg-blue-600 text-white p-6 rounded-xl font-bold text-xl hover:bg-blue-700 transition-all shadow-md flex flex-col items-center gap-2 active:scale-95">
+              <span className="text-4xl">📋</span>
+              Scanner de ULDs
+            </button>
+
+            <button onClick={() => setEcraAtual('pesquisa')} className="w-full bg-gray-800 text-white p-6 rounded-xl font-bold text-xl hover:bg-gray-700 transition-all shadow-md flex flex-col items-center gap-2 active:scale-95">
+              <span className="text-4xl">🔍</span>
+              Pesquisa / Histórico
             </button>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-            <form onSubmit={efetuarPesquisa} className="flex gap-4">
-              <input type="text" value={termoPesquisa} onChange={(e) => setTermoPesquisa(e.target.value)} placeholder="Pesquisar matrícula (ex: AKE)" className="flex-1 px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-lg uppercase font-mono focus:border-blue-500 outline-none" />
-              <button type="submit" disabled={loadingPesquisa} className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700">
-                {loadingPesquisa ? 'A procurar...' : 'Pesquisar Registos'}
-              </button>
-            </form>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-100 text-gray-700 uppercase text-sm">
-                  <th className="p-4 border-b font-bold">Matrícula ULD</th>
-                  <th className="p-4 border-b font-bold">Destino</th>
-                  <th className="p-4 border-b font-bold">Data da Descarga</th>
-                  <th className="p-4 border-b font-bold">Operador (Email)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resultados.length === 0 && !loadingPesquisa && (
-                  <tr><td colSpan="4" className="p-8 text-center text-gray-500 font-medium">Faça uma pesquisa.</td></tr>
-                )}
-                {resultados.map((row) => (
-                  <tr key={row.id} className="hover:bg-blue-50 transition-colors">
-                    <td className="p-4 border-b font-mono font-bold text-gray-800">{row.uld}</td>
-                    <td className="p-4 border-b"><span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">{row.tapete}</span></td>
-                    <td className="p-4 border-b text-gray-600 font-medium">{new Date(row.created_at).toLocaleString('pt-PT')}</td>
-                    <td className="p-4 border-b text-sm text-gray-600">{row.operador || 'N/A'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <button onClick={() => supabase.auth.signOut()} className="w-full mt-8 py-3 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 transition-colors">
+            Terminar Sessão
+          </button>
         </div>
       </div>
     )
   }
 
   // ==========================================
-  // ECRÃ DO SCANNER (OPERADOR)
+  // ECRÃ 3: SCANNER OU PESQUISA
   // ==========================================
   return (
     <div className="min-h-screen bg-slate-100 p-4 font-sans flex flex-col items-center pt-8">
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-extrabold text-blue-900 tracking-tight">Scanner <span className="text-blue-500">Menzies</span></h1>
-          <button onClick={() => supabase.auth.signOut()} className="text-sm text-red-600 font-bold hover:underline">Sair</button>
+        
+        {/* CABEÇALHO PARTILHADO COM BOTÃO VOLTAR */}
+        <div className="flex items-center justify-between mb-8 pb-4 border-b border-gray-100">
+          <button onClick={() => { setEcraAtual('menu'); setCameraAtiva(false); setMensagem({texto: '', tipo: ''}); }} className="flex items-center gap-2 text-blue-600 font-bold hover:text-blue-800 px-3 py-2 bg-blue-50 rounded-lg">
+            ⬅️ Voltar
+          </button>
+          <h2 className="text-xl font-extrabold text-gray-800">
+            {ecraAtual === 'leitura' ? 'Nova Descarga' : 'Pesquisa'}
+          </h2>
         </div>
 
-        <form onSubmit={registarDescarga} className="space-y-6">
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Destino</label>
-            <select value={tapete} onChange={(e) => setTapete(e.target.value)} disabled={loading} className="w-full px-4 py-4 bg-gray-50 border border-gray-300 rounded-lg text-xl text-gray-800 outline-none focus:border-blue-500">
-              <option value="">Selecionar destino...</option>
-              {listaTapetes.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
+        {/* --- CONTEÚDO DO SCANNER --- */}
+        {ecraAtual === 'leitura' && (
+          <form onSubmit={registarDescarga} className="space-y-6 animate-fade-in">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2 uppercase">Destino</label>
+              <select value={tapete} onChange={(e) => setTapete(e.target.value)} disabled={loading} className="w-full px-4 py-4 bg-gray-50 border border-gray-300 rounded-lg text-xl text-gray-800 outline-none focus:border-blue-500">
+                <option value="">Selecionar destino...</option>
+                {listaTapetes.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
 
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">Matrícula ULD</label>
-            {!cameraAtiva ? (
-              <div className="space-y-3">
-                <input type="text" value={uld} onChange={(e) => setUld(e.target.value)} placeholder="Ex: AKE12345TP" disabled={loading} className="w-full px-4 py-4 bg-gray-50 border-2 border-gray-300 rounded-lg text-2xl uppercase placeholder:text-gray-400 font-mono focus:border-blue-500 outline-none" />
-                <button type="button" onClick={() => setCameraAtiva(true)} className="w-full py-3 bg-gray-800 text-white rounded-lg font-bold text-lg hover:bg-gray-700 transition-all">📸 Abrir Câmara</button>
-              </div>
-            ) : (
-              <div className="bg-black p-2 rounded-lg relative min-h-[250px]">
-                <button type="button" onClick={() => setCameraAtiva(false)} className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-md z-50 text-sm font-bold shadow-lg">Cancelar</button>
-                <div id="leitor-camera" className="w-full overflow-hidden rounded-md"></div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2 uppercase">Matrícula ULD</label>
+              {!cameraAtiva ? (
+                <div className="space-y-3">
+                  <input type="text" value={uld} onChange={(e) => setUld(e.target.value)} placeholder="Ex: AKE12345TP" disabled={loading} className="w-full px-4 py-4 bg-gray-50 border-2 border-gray-300 rounded-lg text-2xl uppercase placeholder:text-gray-400 font-mono focus:border-blue-500 outline-none" />
+                  <button type="button" onClick={() => setCameraAtiva(true)} className="w-full py-3 bg-gray-800 text-white rounded-lg font-bold text-lg hover:bg-gray-700 transition-all">📸 Abrir Câmara</button>
+                </div>
+              ) : (
+                <div className="bg-black p-2 rounded-lg relative min-h-[250px]">
+                  <button type="button" onClick={() => setCameraAtiva(false)} className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-md z-50 text-sm font-bold shadow-lg">Cancelar</button>
+                  <div id="leitor-camera" className="w-full overflow-hidden rounded-md"></div>
+                </div>
+              )}
+            </div>
+
+            <button type="submit" disabled={loading} className={`w-full py-4 rounded-lg text-white font-bold text-xl uppercase shadow-md ${loading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              {loading ? 'A Gravar...' : 'Gravar Registo'}
+            </button>
+            {mensagem.texto && (
+              <div className={`p-4 rounded-lg text-center font-semibold text-lg ${mensagem.tipo === 'sucesso' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {mensagem.texto}
               </div>
             )}
-          </div>
+          </form>
+        )}
 
-          <button type="submit" disabled={loading} className={`w-full py-4 rounded-lg text-white font-bold text-xl uppercase shadow-md ${loading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-            {loading ? 'A Gravar...' : 'Gravar Registo'}
-          </button>
-        </form>
-        {mensagem.texto && (
-          <div className={`mt-6 p-4 rounded-lg text-center font-semibold text-lg ${mensagem.tipo === 'sucesso' ? 'bg-green-100 text-green-800 border-2 border-green-200' : 'bg-red-100 text-red-800 border-2 border-red-200'}`}>
-            {mensagem.texto}
+        {/* --- CONTEÚDO DA PESQUISA --- */}
+        {ecraAtual === 'pesquisa' && (
+          <div className="space-y-4 animate-fade-in">
+            <form onSubmit={efetuarPesquisa} className="flex gap-2">
+              <input type="text" value={termoPesquisa} onChange={(e) => setTermoPesquisa(e.target.value)} placeholder="Ex: AKE" className="flex-1 px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-lg uppercase font-mono focus:border-blue-500 outline-none" />
+              <button type="submit" disabled={loadingPesquisa} className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700">
+                {loadingPesquisa ? '...' : 'Procurar'}
+              </button>
+            </form>
+
+            <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto pr-1">
+              {resultados.length === 0 && !loadingPesquisa && termoPesquisa && (
+                <p className="text-center text-gray-500 font-medium py-4">Nenhum registo encontrado.</p>
+              )}
+              {resultados.map((row) => (
+                <div key={row.id} className="bg-white border-l-4 border-blue-500 shadow-sm p-4 rounded-r-lg flex flex-col border-t border-r border-b border-gray-100">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-mono font-bold text-lg text-gray-800">{row.uld}</span>
+                    <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold">{row.tapete}</span>
+                  </div>
+                  <span className="text-sm text-gray-500 font-medium mb-1">📅 {new Date(row.created_at).toLocaleString('pt-PT')}</span>
+                  <span className="text-xs text-gray-400 font-mono break-all">👤 {row.operador}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
       </div>
     </div>
   )
