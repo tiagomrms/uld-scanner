@@ -12,7 +12,6 @@ export default function App() {
   const [modoSelecao, setModoSelecao] = useState('botoes');
   const ultimoLido = useRef(''); 
 
-  // A câmara só precisa de estar ativa se estivermos no modo de escanear o TBC ou se já houver um TBC selecionado
   const precisaCamera = tapeteAtual !== null || modoSelecao === 'escanear';
 
   useEffect(() => {
@@ -22,24 +21,21 @@ export default function App() {
     const config = { fps: 10, qrbox: { width: 250, height: 100 } };
 
     html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-      // Evita leituras duplas no espaço de 2 segundos
       if (decodedText === ultimoLido.current) return;
       ultimoLido.current = decodedText;
       setTimeout(() => { ultimoLido.current = ''; }, 2000); 
 
-      // 1. Se ainda não há tapete, valida se o código lido é um TBC/TRF
       if (!tapeteAtual) {
         const textoMaiusculo = decodedText.toUpperCase();
         if (textoMaiusculo.includes("TBC") || textoMaiusculo.includes("TRF") || textoMaiusculo.includes("TAPETE")) {
           setTapeteAtual(decodedText);
-          setModoSelecao('botoes'); // Volta ao default para a próxima vez
+          setModoSelecao('botoes');
         } else {
           alert(`Etiqueta: ${decodedText}. Aponte a um TBC ou TRF válido!`);
         }
         return;
       }
 
-      // 2. Se já há tapete, regista o ULD (sem reiniciar a câmara)
       setUldsLidos(prev => {
         if (prev.some(item => item.uld === decodedText)) return prev;
         return [{ uld: decodedText, tapete: tapeteAtual, timestamp: new Date().toISOString() }, ...prev];
@@ -52,7 +48,7 @@ export default function App() {
         html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
       }
     };
-  }, [precisaCamera, tapeteAtual]); // Otimização crítica: a câmara já não reinicia ao ler ULDs
+  }, [precisaCamera, tapeteAtual]); 
 
   return (
     <div className="p-4 flex flex-col h-screen bg-gray-100">
@@ -76,7 +72,7 @@ export default function App() {
               onClick={() => setModoSelecao('escanear')} 
               className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${modoSelecao === 'escanear' ? 'bg-white text-blue-700 shadow' : 'text-gray-600'}`}
             >
-              Escanear Etiqueta
+              Scanner Tapete
             </button>
           </div>
 
