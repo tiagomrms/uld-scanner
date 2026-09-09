@@ -53,7 +53,7 @@ export default function App() {
   return (
     <div className="p-4 flex flex-col h-screen bg-gray-100">
       <div className={`${tapeteAtual ? 'bg-green-600' : 'bg-blue-600'} text-white p-4 rounded-lg shadow-md mb-4 transition-colors`}>
-        <h1 className="text-xl font-bold">Gestão de ULDs - Menzies</h1>
+        <h1 className="text-xl font-bold">Gestão ULDs Chegadas - Menzies</h1>
         <p className="text-sm mt-1">
           {tapeteAtual ? `Ativo no ${tapeteAtual} - A ler Ulds...` : "Definir Local de Descarga"}
         </p>
