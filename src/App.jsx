@@ -111,7 +111,7 @@ function App() {
   }
 
   // ==========================================
-  // ESTADOS DA PESQUISA
+  // ESTADOS DA PESQUISA INTELIGENTE
   // ==========================================
   const [termoPesquisa, setTermoPesquisa] = useState('')
   const [resultados, setResultados] = useState([])
@@ -122,11 +122,14 @@ function App() {
     if (!termoPesquisa) return
     setLoadingPesquisa(true)
     try {
+      const termo = termoPesquisa.toUpperCase()
+      
       const { data, error } = await supabase
         .from('descargas_uld')
         .select('*')
-        .ilike('uld', `%${termoPesquisa.toUpperCase()}%`)
-        .order('created_at', { ascending: false })
+        .or(`uld.ilike.%${termo}%,tapete.ilike.%${termo}%`)
+        .order('created_at', { ascending: false }) // Mais recentes primeiro
+        
       if (error) throw error
       setResultados(data)
     } catch (error) {
@@ -180,7 +183,7 @@ function App() {
         <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6">
           <div className="text-center mb-8 border-b border-gray-100 pb-6">
             <h1 className="text-3xl font-extrabold text-blue-900 tracking-tight">Menzies <span className="text-blue-500">App</span></h1>
-            <p className="text-sm text-gray-500 font-medium mt-2">Bem-vindo, {session.user.email}</p>
+            <p className="text-sm text-gray-500 font-medium mt-2 break-all">Bem-vindo, {session.user.email}</p>
           </div>
 
           <div className="space-y-4">
@@ -260,27 +263,60 @@ function App() {
         {/* --- CONTEÚDO DA PESQUISA --- */}
         {ecraAtual === 'pesquisa' && (
           <div className="space-y-4 animate-fade-in">
-            <form onSubmit={efetuarPesquisa} className="flex gap-2">
-              <input type="text" value={termoPesquisa} onChange={(e) => setTermoPesquisa(e.target.value)} placeholder="Ex: AKE" className="flex-1 px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-lg uppercase font-mono focus:border-blue-500 outline-none" />
-              <button type="submit" disabled={loadingPesquisa} className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700">
-                {loadingPesquisa ? '...' : 'Procurar'}
+            <form onSubmit={efetuarPesquisa} className="flex flex-col gap-3">
+              <input 
+                type="text" 
+                value={termoPesquisa} 
+                onChange={(e) => setTermoPesquisa(e.target.value)} 
+                placeholder="Ex: TBC 4 ou AKE123" 
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-lg uppercase font-mono focus:border-blue-500 outline-none" 
+              />
+              <button type="submit" disabled={loadingPesquisa} className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700">
+                {loadingPesquisa ? 'A pesquisar...' : 'Procurar Registos'}
               </button>
             </form>
 
-            <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto pr-1">
+            {/* Contador de resultados */}
+            {resultados.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex justify-between items-center mt-2">
+                <span className="text-blue-800 font-bold">Total de ULDs:</span>
+                <span className="bg-blue-600 text-white px-3 py-1 rounded-full font-bold">{resultados.length}</span>
+              </div>
+            )}
+
+            <div className="mt-2 space-y-4 max-h-[450px] overflow-y-auto pr-2 pb-4">
               {resultados.length === 0 && !loadingPesquisa && termoPesquisa && (
                 <p className="text-center text-gray-500 font-medium py-4">Nenhum registo encontrado.</p>
               )}
-              {resultados.map((row) => (
-                <div key={row.id} className="bg-white border-l-4 border-blue-500 shadow-sm p-4 rounded-r-lg flex flex-col border-t border-r border-b border-gray-100">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-mono font-bold text-lg text-gray-800">{row.uld}</span>
-                    <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold">{row.tapete}</span>
+              
+              {resultados.map((row) => {
+                // Formatar a data para ser mais legível
+                const dataObj = new Date(row.created_at);
+                const dataFormatada = dataObj.toLocaleDateString('pt-PT');
+                const horaFormatada = dataObj.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                return (
+                  <div key={row.id} className="bg-white border border-gray-200 shadow-sm rounded-lg overflow-hidden flex flex-col">
+                    {/* Cabeçalho do Card - Matrícula e Tapete */}
+                    <div className="bg-gray-50 p-3 border-b border-gray-200 flex justify-between items-center">
+                      <span className="font-mono font-extrabold text-xl text-blue-900">{row.uld}</span>
+                      <span className="bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-bold shadow-sm">{row.tapete}</span>
+                    </div>
+                    
+                    {/* Corpo do Card - Data, Hora e Operador */}
+                    <div className="p-3 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500 font-semibold">Data e Hora:</span>
+                        <span className="text-gray-800 font-bold">{dataFormatada} às {horaFormatada}</span>
+                      </div>
+                      <div className="flex flex-col text-sm border-t border-gray-100 pt-2">
+                        <span className="text-gray-500 font-semibold mb-1">Descarregado por:</span>
+                        <span className="text-gray-700 font-mono text-xs break-all bg-gray-100 p-1.5 rounded">{row.operador}</span>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-sm text-gray-500 font-medium mb-1">📅 {new Date(row.created_at).toLocaleString('pt-PT')}</span>
-                  <span className="text-xs text-gray-400 font-mono break-all">👤 {row.operador}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
